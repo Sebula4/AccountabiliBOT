@@ -167,5 +167,6 @@ for day in ['thu', 'fri', 'sat']:
 scheduler.add_job(lambda: asyncio.create_task(sunday_check()), CronTrigger(day_of_week='sun', hour=7, minute=0))
 
 # ---------- Run Bot ----------
-TOKEN = os.getenv("1412579062295171102")
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 client.run(TOKEN)
+
