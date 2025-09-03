@@ -124,9 +124,9 @@ async def send_notification(message: str, user_ids: list[int]):
     if not user_ids:
         return
 
-    channel = discord.utils.get(client.get_all_channels(), name="general")  # CHANGE if needed
+    channel = discord.utils.get(client.get_all_channels(), name="accountabilibuddies")  # CHANGE if needed
     if not channel:
-        print("Channel 'general' not found.")
+        print("Channel 'accountabilibuddies' not found.")
         return
 
     mentions = " ".join(f"<@{uid}>" for uid in user_ids)
@@ -169,4 +169,5 @@ scheduler.add_job(lambda: asyncio.create_task(sunday_check()), CronTrigger(day_o
 # ---------- Run Bot ----------
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 client.run(TOKEN)
+
 
