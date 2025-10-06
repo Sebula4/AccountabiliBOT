@@ -41,6 +41,21 @@ async def on_ready():
     scheduler.start()
     print(f"Bot is online as {client.user}.")
 
+# ---------- Prefix Commands (e.g., !workout) ----------
+
+@client.command(name="workout", help="Log a workout using a prefix command instead of a slash command.")
+async def workout_cmd(ctx):
+    user_id = str(ctx.author.id)
+
+    if user_id not in user_data:
+        await ctx.send("You're not on the list. Use `/add_user` to join.")
+        return
+
+    user_data[user_id]["workouts"] += 1
+    save_data()
+    await ctx.send(f"Great job, {ctx.author.name}! Workouts this week: {user_data[user_id]['workouts']}")
+
+
 # ---------- Slash Commands ----------
 
 @tree.command(name="add_user", description="Add yourself to the accountability list.")
@@ -99,15 +114,36 @@ async def display(interaction: discord.Interaction):
         await interaction.response.send_message("No users are currently being tracked.")
         return
 
-    sorted_users = sorted(user_data.values(), key=lambda x: x["name"].lower())
+    embed = discord.Embed(title="🏋️ Accountability Stats", color=discord.Color.blue())
+    for user in sorted(user_data.values(), key=lambda x: x["name"].lower()):
+        embed.add_field(
+            name=user["name"],
+            value=f"Workouts: {user['workouts']} / {user['goal']}  |  🔥 Streak: {user['streak']}",
+            inline=False
+        )
 
-    lines = [
-        f"**{u['name']}**: {u['workouts']} / {u['goal']} / {u['streak']}"
-        for u in sorted_users
-    ]
+    await interaction.response.send_message(embed=embed)
 
-    message = "**🏋️ Accountability Stats:**\n" + "\n".join(lines)
-    await interaction.response.send_message(message)
+@tree.command(name="set_streak", description="Adjust a user's current workout streak (admin only).")
+@app_commands.describe(
+    user="The user whose streak you want to adjust",
+    streak="The new streak value (must be 0 or higher)"
+)
+async def set_streak(interaction: discord.Interaction, user: discord.User, streak: int):
+
+    user_id = str(user.id)
+
+    if user_id not in user_data:
+        await interaction.response.send_message(f"{user.name} is not on the list.", ephemeral=True)
+        return
+
+    if streak < 0:
+        await interaction.response.send_message("❌ Streak cannot be negative.", ephemeral=True)
+        return
+
+    user_data[user_id]["streak"] = streak
+    save_data()
+    await interaction.response.send_message(f"✅ {user.name}'s streak has been set to **{streak}**.")
 
 # ---------- Weekly Checkup ----------
 def weekly_check():
@@ -139,35 +175,54 @@ async def monday_to_wednesday_check():
     if users_to_tag:
         await send_notification("🏃 You haven't logged any workouts this week! Time to get moving 💪", users_to_tag)
 
-async def thursday_to_saturday_check():
+async def thursday_to_friday_check():
     users_to_tag = [
         int(uid) for uid, data in user_data.items() if (data["goal"] - data["workouts"]) >= 2
     ]
     if users_to_tag:
         await send_notification("⚠️ You're 2 or more workouts behind your goal this week. Time to catch up!", users_to_tag)
 
-async def sunday_check():
+async def saturday_check():
     users_to_tag = [
         int(uid) for uid, data in user_data.items() if (data["goal"] - data["workouts"]) >= 1
     ]
     if users_to_tag:
-        await send_notification("🕒 It's Sunday! You're still behind your goal. Finish strong 💥", users_to_tag)
+        await send_notification("🕒 It's Saturday! You're still behind your goal. Finish strong 💥", users_to_tag)
+
+async def weekly_check():
+    ...
+    await send_notification("✅ Weekly reset done! Great work everyone!", list(map(int, user_data.keys())))
 
 # ---------- Scheduler ----------
 scheduler = AsyncIOScheduler()
 scheduler.add_job(weekly_check, CronTrigger(day_of_week='sun', hour=0, minute=0))
 
+scheduler.add_job(lambda: asyncio.create_task(weekly_check()), CronTrigger(day_of_week='sun', hour=0, minute=0))
+
+
 # Notifications: 7 AM
 for day in ['mon', 'tue', 'wed']:
-    scheduler.add_job(lambda: asyncio.create_task(monday_to_wednesday_check()), CronTrigger(day_of_week=day, hour=7, minute=0))
+    scheduler.add_job(
+        lambda day=day: asyncio.create_task(monday_to_wednesday_check()),
+        CronTrigger(day_of_week=day, hour=7, minute=0)
+    )
 
-for day in ['thu', 'fri', 'sat']:
-    scheduler.add_job(lambda: asyncio.create_task(thursday_to_saturday_check()), CronTrigger(day_of_week=day, hour=7, minute=0))
 
-scheduler.add_job(lambda: asyncio.create_task(sunday_check()), CronTrigger(day_of_week='sun', hour=7, minute=0))
+for day in ['thu', 'fri']:
+    scheduler.add_job(
+        lambda day=day: asyncio.create_task(monday_to_wednesday_check()),
+        CronTrigger(day_of_week=day, hour=7, minute=0)
+    )
+
+
+scheduler.add_job(lambda: asyncio.create_task(saturday_check()), CronTrigger(day_of_week='sat', hour=7, minute=0))
 
 # ---------- Run Bot ----------
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 client.run(TOKEN)
+
+@tree.error
+async def on_app_command_error(interaction: discord.Interaction, error):
+    await interaction.response.send_message(f"⚠️ {error}", ephemeral=True)
 
 
