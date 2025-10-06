@@ -41,20 +41,6 @@ async def on_ready():
     scheduler.start()
     print(f"Bot is online as {client.user}.")
 
-# ---------- Prefix Commands (e.g., !workout) ----------
-
-@client.command(name="workout", help="Log a workout using a prefix command instead of a slash command.")
-async def workout_cmd(ctx):
-    user_id = str(ctx.author.id)
-
-    if user_id not in user_data:
-        await ctx.send("You're not on the list. Use `/add_user` to join.")
-        return
-
-    user_data[user_id]["workouts"] += 1
-    save_data()
-    await ctx.send(f"Great job, {ctx.author.name}! Workouts this week: {user_data[user_id]['workouts']}")
-
 
 # ---------- Slash Commands ----------
 
@@ -80,16 +66,36 @@ async def add_user(interaction: discord.Interaction):
     await interaction.response.send_message(f"{interaction.user.name} added to the accountability list!")
 
 @tree.command(name="workout", description="Log a workout for this week.")
-async def workout(interaction: discord.Interaction):
+@app_commands.describe(description="Optional short description of your workout")
+async def workout(interaction: discord.Interaction, description: str | None = None):
     user_id = str(interaction.user.id)
 
     if user_id not in user_data:
         await interaction.response.send_message("You're not on the list. Use `/add_user` to join.", ephemeral=True)
         return
 
+    # Increment workout count
     user_data[user_id]["workouts"] += 1
+
+    # Optionally store the description (add a simple log if desired)
+    if description:
+        # Optional: create a new field to store recent workouts
+        if "recent_workouts" not in user_data[user_id]:
+            user_data[user_id]["recent_workouts"] = []
+        user_data[user_id]["recent_workouts"].append(description)
+
+        # Keep only the last 5 workouts to limit data growth
+        user_data[user_id]["recent_workouts"] = user_data[user_id]["recent_workouts"][-5:]
+
     save_data()
-    await interaction.response.send_message(f"Great job! Workouts this week: {user_data[user_id]['workouts']}")
+
+    # Construct response message
+    message = f"💪 Great job! Workouts this week: {user_data[user_id]['workouts']}"
+    if description:
+        message += f"\n📝 You logged: *{description}*"
+
+    await interaction.response.send_message(message)
+
 
 @tree.command(name="set_goal", description="Set your workout goal per week.")
 @app_commands.describe(goal="Your desired number of workouts per week")
@@ -224,5 +230,6 @@ client.run(TOKEN)
 @tree.error
 async def on_app_command_error(interaction: discord.Interaction, error):
     await interaction.response.send_message(f"⚠️ {error}", ephemeral=True)
+
 
 
